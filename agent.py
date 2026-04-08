@@ -10,8 +10,7 @@ import urllib.request
 from typing import Any
 
 
-from mpai_agent_sdk import LaunchContext, WorkerClient, load_launch_context  # noqa: E402
-from mpai_agent_sdk.launch import parse_json_file_arg  # noqa: E402
+from mpai_agent_sdk import LaunchContext, WorkerClient, load_launch_context, parse_json_file_arg  # noqa: E402
 
 RUNNING = True
 
@@ -107,18 +106,17 @@ class OpenAICompatibleAgent:
         return "".join(parts)
 
     def generate_reply(self, user_content: str) -> str:
-        model = self.context.model
-        provider = model.get("provider", "")
+        provider = self.context.model_provider
         if provider == "mock":
-            alias = model.get("alias") or model.get("model") or "mock"
+            alias = self.context.model_alias or self.context.model_name or "mock"
             return f"[{alias}] {user_content}"
         if provider != "openai-compatible":
             raise RuntimeError(f"unsupported provider: {provider}")
 
-        base_url = str(model.get("base_url", "")).rstrip("/")
-        api_key = str(model.get("api_key", ""))
-        model_name = str(model.get("model", ""))
-        headers = {"Content-Type": "application/json", **(model.get("headers") or {})}
+        base_url = self.context.model_base_url
+        api_key = self.context.model_api_key
+        model_name = self.context.model_name
+        headers = {"Content-Type": "application/json", **self.context.model_headers}
         if api_key and "Authorization" not in headers:
             headers["Authorization"] = f"Bearer {api_key}"
         if "User-Agent" not in headers:
@@ -128,7 +126,7 @@ class OpenAICompatibleAgent:
             "model": model_name,
             "messages": self.build_messages(user_content),
         }
-        for key, value in (model.get("options") or {}).items():
+        for key, value in self.context.model_options.items():
             payload[key] = value
         payload["stream"] = True
 
@@ -202,10 +200,14 @@ class OpenAICompatibleAgent:
         self.report_dag("idle", assistant_message_id)
 
     def bootstrap(self) -> None:
-        model = self.context.model
         self.report_log(
             "info",
-            f"agent started provider={model.get('provider', '')} model={model.get('model', '')} workspace={self.context.workspace}",
+            "agent started "
+            f"provider={self.context.model_provider} "
+            f"model={self.context.model_name} "
+            f"repo={self.context.repository_alias or self.context.repository_url} "
+            f"workspace={self.context.workspace} "
+            f"launch_json={self.context.launch_config_file or self.context.json_file}",
         )
         self.report_dag("idle", None)
 

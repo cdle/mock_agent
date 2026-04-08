@@ -1,6 +1,6 @@
 # mock_agent
 
-MPAI 测试 agent，已升级为 `--jsonFile` 启动协议，并内置 Python SDK。
+MPAI 测试 agent，使用 `--jsonFile` 作为唯一运行参数输入，并内置 Python SDK。
 
 ## 能力
 
@@ -9,6 +9,7 @@ MPAI 测试 agent，已升级为 `--jsonFile` 启动协议，并内置 Python SD
 - 支持 `mock` provider 回显模式
 - 支持 `openai-compatible` provider，调用 `/chat/completions`
 - 上报 user / assistant message、流式 append、DAG、log、result、heartbeat
+- 不依赖任何环境变量，运行参数全部从 launch json 读取
 
 ## 运行
 
@@ -24,13 +25,19 @@ python3 agent.py --jsonFile /absolute/path/to/.mpai/agent-launch.json
 
 ## 约定
 
-`jsonFile` 中至少包含：
+`jsonFile` 中应包含 agent 运行所需全部参数，至少包括：
 
 - `task.task_id`
+- `task.branch`
+- `task.commit_id`
+- `repository.alias` / `repository.repo_url` / `repository.launch_command`
 - `worker.base_url`
 - `worker.token`
+- `worker.worker_id`
 - `model.provider` / `model.model`
+- `model.base_url` / `model.api_key` / `model.headers` / `model.options`
 - `paths.workspace`
+- `paths.launch_config_file`
 - `user.skills` / `user.memory_content`
 
 默认 provider 为 `mock` 时不会调用外部模型接口。
