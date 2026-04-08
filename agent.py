@@ -74,6 +74,38 @@ class OpenAICompatibleAgent:
             {"role": "user", "content": user_content},
         ]
 
+    def extract_text_parts(self, value: Any) -> list[str]:
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, list):
+            text_parts: list[str] = []
+            for item in value:
+                if isinstance(item, str):
+                    text_parts.append(item)
+                    continue
+                if not isinstance(item, dict):
+                    continue
+                text = item.get("text")
+                if isinstance(text, str):
+                    text_parts.append(text)
+                    continue
+                if isinstance(text, dict):
+                    nested_text = text.get("value")
+                    if isinstance(nested_text, str):
+                        text_parts.append(nested_text)
+            return text_parts
+        return []
+
+    def extract_choice_text(self, choice: dict[str, Any]) -> str:
+        parts: list[str] = []
+        delta = choice.get("delta")
+        if isinstance(delta, dict):
+            parts.extend(self.extract_text_parts(delta.get("content")))
+        message = choice.get("message")
+        if isinstance(message, dict):
+            parts.extend(self.extract_text_parts(message.get("content")))
+        return "".join(parts)
+
     def generate_reply(self, user_content: str) -> str:
         model = self.context.model
         provider = model.get("provider", "")
@@ -89,6 +121,8 @@ class OpenAICompatibleAgent:
         headers = {"Content-Type": "application/json", **(model.get("headers") or {})}
         if api_key and "Authorization" not in headers:
             headers["Authorization"] = f"Bearer {api_key}"
+        if "User-Agent" not in headers:
+            headers["User-Agent"] = "mpai-agent-sdk/0.1"
 
         payload: dict[str, Any] = {
             "model": model_name,
@@ -96,6 +130,7 @@ class OpenAICompatibleAgent:
         }
         for key, value in (model.get("options") or {}).items():
             payload[key] = value
+        payload["stream"] = True
 
         request = urllib.request.Request(
             base_url + "/chat/completions",
@@ -105,26 +140,38 @@ class OpenAICompatibleAgent:
         )
         try:
             with urllib.request.urlopen(request, timeout=60) as response:
-                raw = response.read().decode("utf-8")
+                content_type = response.headers.get("Content-Type", "")
+                parts: list[str] = []
+                if "text/event-stream" in content_type:
+                    for line in response:
+                        decoded = line.decode("utf-8", errors="replace").strip()
+                        if not decoded or not decoded.startswith("data:"):
+                            continue
+                        payload_line = decoded[5:].strip()
+                        if payload_line == "[DONE]":
+                            break
+                        chunk = json.loads(payload_line)
+                        for choice in chunk.get("choices") or []:
+                            text = self.extract_choice_text(choice)
+                            if text:
+                                parts.append(text)
+                else:
+                    raw = response.read().decode("utf-8")
+                    data = json.loads(raw)
+                    for choice in data.get("choices") or []:
+                        text = self.extract_choice_text(choice)
+                        if text:
+                            parts.append(text)
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
             raise RuntimeError(f"openai-compatible http error {exc.code}: {body}") from exc
         except urllib.error.URLError as exc:
             raise RuntimeError(f"openai-compatible request failed: {exc}") from exc
 
-        data = json.loads(raw)
-        choices = data.get("choices") or []
-        if not choices:
-            raise RuntimeError(f"invalid openai-compatible response: {data}")
-        message = choices[0].get("message") or {}
-        content = message.get("content")
-        if isinstance(content, list):
-            text_parts = []
-            for item in content:
-                if isinstance(item, dict) and item.get("type") == "text":
-                    text_parts.append(str(item.get("text", "")))
-            return "".join(text_parts)
-        return str(content or "")
+        reply = "".join(parts)
+        if reply.strip() == "":
+            raise RuntimeError("openai-compatible response contained no assistant text")
+        return reply
 
     def handle_user_message(self, item: dict[str, Any]) -> None:
         client_message_id = str(item.get("client_message_id", ""))
