@@ -34,17 +34,144 @@ class OpenAICompatibleAgent:
         self.last_heartbeat_at = 0.0
         self.heartbeat_interval = 10.0
         self.poll_interval = 1.0
+        self.dialog_round = 0
+        self.max_visible_rounds = 8
 
     def report_log(self, level: str, content: str) -> None:
         self.client.report_log(log_id=self.log_seq.next(), level=level, content=content)
 
-    def report_dag(self, state: str, current_message_id: int | None = None) -> None:
-        self.client.report_dag({
-            "task_id": self.context.task_id,
-            "state": state,
-            "current_message_id": current_message_id,
-            "updated_at": time.time(),
-        })
+    def build_mock_dag(self, phase: str, current_message_id: int | None = None) -> dict[str, Any]:
+        nodes: list[dict[str, Any]] = [
+            {
+                "id": "d_session",
+                "type": "DATA",
+                "name": "session_context",
+                "desc": "当前会话上下文（mock）",
+                "status": "done",
+                "output_key": "session_context",
+            }
+        ]
+        edges: list[dict[str, Any]] = []
+
+        if self.dialog_round <= 0:
+            nodes.append({
+                "id": "s_bootstrap",
+                "type": "SKILL",
+                "name": "bootstrap_session",
+                "desc": "初始化会话 DAG（mock）",
+                "status": "done",
+                "output_key": "bootstrap_ready",
+            })
+            edges.append({
+                "from": "d_session",
+                "to": "s_bootstrap",
+                "label": "session_context",
+                "reason": "初始化 mock 会话状态",
+            })
+            return {"nodes": nodes, "edges": edges}
+
+        start_round = max(1, self.dialog_round - self.max_visible_rounds + 1)
+        previous_reply_id = ""
+        for round_no in range(start_round, self.dialog_round + 1):
+            request_id = f"d_round_{round_no}_request"
+            intent_id = f"s_round_{round_no}_intent"
+            draft_id = f"g_round_{round_no}_draft"
+            reply_id = f"t_round_{round_no}_reply"
+            is_current_round = round_no == self.dialog_round
+
+            intent_status = "done"
+            draft_status = "done"
+            reply_status = "done"
+            if is_current_round:
+                if phase == "processing":
+                    draft_status = "running"
+                    reply_status = "pending"
+                elif phase == "responding":
+                    reply_status = "running"
+                elif phase == "completed":
+                    pass
+                else:
+                    intent_status = "pending"
+                    draft_status = "pending"
+                    reply_status = "pending"
+
+            nodes.extend([
+                {
+                    "id": request_id,
+                    "type": "DATA",
+                    "name": f"round_{round_no}_request",
+                    "desc": f"第 {round_no} 轮用户输入（mock）",
+                    "status": "done",
+                    "output_key": f"round_{round_no}_request",
+                },
+                {
+                    "id": intent_id,
+                    "type": "SKILL",
+                    "name": "intent-classification",
+                    "desc": "模拟理解当前轮次意图",
+                    "status": intent_status,
+                    "output_key": f"round_{round_no}_intent" if intent_status == "done" else "",
+                },
+                {
+                    "id": draft_id,
+                    "type": "GLUE_CODING",
+                    "name": "draft-generation",
+                    "desc": "模拟生成候选答复草稿",
+                    "status": draft_status,
+                    "output_key": f"round_{round_no}_draft" if draft_status in {"done", "running"} else "",
+                },
+                {
+                    "id": reply_id,
+                    "type": "TEXT_RESPONSE",
+                    "name": "final-response",
+                    "desc": "模拟向前端输出答复",
+                    "status": reply_status,
+                    "output_key": (
+                        f"assistant_message_{current_message_id}"
+                        if is_current_round and current_message_id is not None and reply_status in {"done", "running"}
+                        else (f"round_{round_no}_reply" if reply_status == "done" else "")
+                    ),
+                },
+            ])
+            edges.extend([
+                {
+                    "from": "d_session",
+                    "to": intent_id,
+                    "label": "session_context",
+                    "reason": "使用会话历史辅助当前轮意图理解",
+                },
+                {
+                    "from": request_id,
+                    "to": intent_id,
+                    "label": "user_request",
+                    "reason": "解析当前轮用户输入",
+                },
+                {
+                    "from": intent_id,
+                    "to": draft_id,
+                    "label": "intent",
+                    "reason": "根据意图组织候选答复草稿",
+                },
+                {
+                    "from": draft_id,
+                    "to": reply_id,
+                    "label": "draft_reply",
+                    "reason": "将草稿整理为最终回复",
+                },
+            ])
+            if previous_reply_id:
+                edges.append({
+                    "from": previous_reply_id,
+                    "to": intent_id,
+                    "label": "previous_reply",
+                    "reason": "后续轮次基于前一轮回复继续推进",
+                })
+            previous_reply_id = reply_id
+
+        return {"nodes": nodes, "edges": edges}
+
+    def report_dag(self, phase: str, current_message_id: int | None = None) -> None:
+        self.client.report_dag(self.build_mock_dag(phase=phase, current_message_id=current_message_id))
 
     def maybe_heartbeat(self) -> None:
         now = time.time()
@@ -174,6 +301,7 @@ class OpenAICompatibleAgent:
     def handle_user_message(self, item: dict[str, Any]) -> None:
         client_message_id = str(item.get("client_message_id", ""))
         user_content = str(item.get("content", ""))
+        self.dialog_round += 1
 
         user_message_id = self.message_seq.next()
         self.client.report_message(
@@ -184,11 +312,12 @@ class OpenAICompatibleAgent:
             status="completed",
             append=False,
         )
-        self.report_log("info", f"confirmed user message client_message_id={client_message_id}")
+        self.report_log("info", f"confirmed user message client_message_id={client_message_id} round={self.dialog_round}")
 
         assistant_message_id = self.message_seq.next()
         self.report_dag("processing", assistant_message_id)
         reply = self.generate_reply(user_content)
+        self.report_dag("responding", assistant_message_id)
         self.client.stream_text(
             message_id=assistant_message_id,
             role="assistant",
@@ -196,8 +325,8 @@ class OpenAICompatibleAgent:
             chunk_size=24,
             delay_seconds=0.1,
         )
-        self.report_log("info", f"completed assistant message message_id={assistant_message_id}")
-        self.report_dag("idle", assistant_message_id)
+        self.report_log("info", f"completed assistant message message_id={assistant_message_id} round={self.dialog_round}")
+        self.report_dag("completed", assistant_message_id)
 
     def bootstrap(self) -> None:
         self.report_log(
@@ -209,7 +338,7 @@ class OpenAICompatibleAgent:
             f"workspace={self.context.workspace} "
             f"launch_json={self.context.launch_config_file or self.context.json_file}",
         )
-        self.report_dag("idle", None)
+        self.report_dag("bootstrap", None)
 
     def run(self) -> int:
         self.bootstrap()
