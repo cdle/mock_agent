@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 
-@dataclass(slots=True)
+@dataclass
 class LaunchContext:
     raw: dict[str, Any]
     json_file: Path
