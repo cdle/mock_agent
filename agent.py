@@ -182,17 +182,24 @@ class OpenAICompatibleAgent:
             self.client.heartbeat()
         self.last_heartbeat_at = now
 
+    def render_skills(self, items: list[dict[str, Any]]) -> str:
+        rendered: list[str] = []
+        for item in items:
+            path = item.get("path", "")
+            content = item.get("content", "")
+            rendered.append(f"## {path}\n{content}".strip())
+        return "\n\n".join(rendered)
+
     def build_messages(self, user_content: str) -> list[dict[str, str]]:
         parts: list[str] = []
+        if self.context.system_memory_content:
+            parts.append("系统 memory:\n" + self.context.system_memory_content)
+        if self.context.system_skills:
+            parts.append("系统 skills:\n" + self.render_skills(self.context.system_skills))
         if self.context.memory_content:
             parts.append("用户 memory:\n" + self.context.memory_content)
         if self.context.skills:
-            rendered = []
-            for item in self.context.skills:
-                path = item.get("path", "")
-                content = item.get("content", "")
-                rendered.append(f"## {path}\n{content}".strip())
-            parts.append("用户 skills:\n" + "\n\n".join(rendered))
+            parts.append("用户 skills:\n" + self.render_skills(self.context.skills))
         system_text = "你是接入 MPAI worker 的 agent。基于上下文回复用户。"
         if parts:
             system_text += "\n\n" + "\n\n".join(parts)
@@ -343,6 +350,8 @@ class OpenAICompatibleAgent:
             f"model={self.context.model_name} "
             f"repo={self.context.repository_alias or self.context.repository_url} "
             f"workspace={self.context.workspace} "
+            f"system_skills={len(self.context.system_skills)} "
+            f"user_skills={len(self.context.skills)} "
             f"launch_json={self.context.launch_config_file or self.context.json_file}",
         )
         self.report_dag("bootstrap", None)
