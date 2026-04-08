@@ -41,8 +41,8 @@ class LaunchContext:
         return dict(self.raw.get("user", {}) or {})
 
     @property
-    def system(self) -> dict[str, Any]:
-        return dict(self.raw.get("system", {}) or {})
+    def common(self) -> dict[str, Any]:
+        return dict(self.raw.get("common", {}) or {})
 
     @property
     def task_id(self) -> str:
@@ -145,12 +145,12 @@ class LaunchContext:
         return str(self.paths.get("memory_file", ""))
 
     @property
-    def system_skills_dir(self) -> str:
-        return str(self.paths.get("system_skills_dir", ""))
+    def common_skills_dir(self) -> str:
+        return str(self.paths.get("common_skills_dir", ""))
 
     @property
-    def system_memory_file(self) -> str:
-        return str(self.paths.get("system_memory_file", ""))
+    def common_memory_file(self) -> str:
+        return str(self.paths.get("common_memory_file", ""))
 
     @property
     def launch_config_file(self) -> str:
@@ -169,16 +169,16 @@ class LaunchContext:
         return [dict(item or {}) for item in (self.user.get("skills", []) or [])]
 
     @property
-    def system_memory_path(self) -> str:
-        return str(self.system.get("memory_path", self.system_memory_file))
+    def common_memory_path(self) -> str:
+        return str(self.common.get("memory_path", self.common_memory_file))
 
     @property
-    def system_memory_content(self) -> str:
-        return str(self.system.get("memory_content", ""))
+    def common_memory_content(self) -> str:
+        return str(self.common.get("memory_content", ""))
 
     @property
-    def system_skills(self) -> list[dict[str, Any]]:
-        return [dict(item or {}) for item in (self.system.get("skills", []) or [])]
+    def common_skills(self) -> list[dict[str, Any]]:
+        return [dict(item or {}) for item in (self.common.get("skills", []) or [])]
 
 
 

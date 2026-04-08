@@ -192,10 +192,10 @@ class OpenAICompatibleAgent:
 
     def build_messages(self, user_content: str) -> list[dict[str, str]]:
         parts: list[str] = []
-        if self.context.system_memory_content:
-            parts.append("系统 memory:\n" + self.context.system_memory_content)
-        if self.context.system_skills:
-            parts.append("系统 skills:\n" + self.render_skills(self.context.system_skills))
+        if self.context.common_memory_content:
+            parts.append("公共 memory:\n" + self.context.common_memory_content)
+        if self.context.common_skills:
+            parts.append("公共 skills:\n" + self.render_skills(self.context.common_skills))
         if self.context.memory_content:
             parts.append("用户 memory:\n" + self.context.memory_content)
         if self.context.skills:
@@ -350,7 +350,7 @@ class OpenAICompatibleAgent:
             f"model={self.context.model_name} "
             f"repo={self.context.repository_alias or self.context.repository_url} "
             f"workspace={self.context.workspace} "
-            f"system_skills={len(self.context.system_skills)} "
+            f"common_skills={len(self.context.common_skills)} "
             f"user_skills={len(self.context.skills)} "
             f"launch_json={self.context.launch_config_file or self.context.json_file}",
         )
