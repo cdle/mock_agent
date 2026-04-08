@@ -72,6 +72,15 @@ class WorkerClient:
             },
         )
 
+    def update_title(self, title: str) -> dict[str, Any]:
+        return self._post(
+            "/internal/agent/update_title",
+            {
+                "task_id": self.task_id,
+                "title": title,
+            },
+        )
+
     def report_log(self, *, log_id: int, level: str, content: str) -> dict[str, Any]:
         return self._post(
             "/internal/agent/report_log",

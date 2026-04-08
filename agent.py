@@ -36,6 +36,7 @@ class OpenAICompatibleAgent:
         self.poll_interval = 1.0
         self.dialog_round = 0
         self.max_visible_rounds = 8
+        self.title_synced = context.task_title.strip() not in {"", "新任务"}
 
     def report_log(self, level: str, content: str) -> None:
         self.client.report_log(log_id=self.log_seq.next(), level=level, content=content)
@@ -302,6 +303,12 @@ class OpenAICompatibleAgent:
         client_message_id = str(item.get("client_message_id", ""))
         user_content = str(item.get("content", ""))
         self.dialog_round += 1
+        if not self.title_synced and user_content.strip():
+            try:
+                self.client.update_title(user_content)
+                self.title_synced = True
+            except Exception as exc:  # noqa: BLE001
+                self.report_log("warn", f"update title failed: {exc}")
 
         user_message_id = self.message_seq.next()
         self.client.report_message(

@@ -53,6 +53,10 @@ class LaunchContext:
         return str(self.task.get("status", ""))
 
     @property
+    def task_title(self) -> str:
+        return str(self.task.get("title", ""))
+
+    @property
     def branch(self) -> str:
         return str(self.task.get("branch", ""))
 
