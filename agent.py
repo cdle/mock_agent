@@ -64,10 +64,9 @@ class OpenAICompatibleAgent:
                 "output_key": "bootstrap_ready",
             })
             edges.append({
-                "from": "d_session",
-                "to": "s_bootstrap",
+                "src": "d_session",
+                "dst": "s_bootstrap",
                 "label": "session_context",
-                "reason": "初始化 mock 会话状态",
             })
             return {"nodes": nodes, "edges": edges}
 
@@ -136,36 +135,31 @@ class OpenAICompatibleAgent:
             ])
             edges.extend([
                 {
-                    "from": "d_session",
-                    "to": intent_id,
+                    "src": "d_session",
+                    "dst": intent_id,
                     "label": "session_context",
-                    "reason": "使用会话历史辅助当前轮意图理解",
                 },
                 {
-                    "from": request_id,
-                    "to": intent_id,
+                    "src": request_id,
+                    "dst": intent_id,
                     "label": "user_request",
-                    "reason": "解析当前轮用户输入",
                 },
                 {
-                    "from": intent_id,
-                    "to": draft_id,
+                    "src": intent_id,
+                    "dst": draft_id,
                     "label": "intent",
-                    "reason": "根据意图组织候选答复草稿",
                 },
                 {
-                    "from": draft_id,
-                    "to": reply_id,
+                    "src": draft_id,
+                    "dst": reply_id,
                     "label": "draft_reply",
-                    "reason": "将草稿整理为最终回复",
                 },
             ])
             if previous_reply_id:
                 edges.append({
-                    "from": previous_reply_id,
-                    "to": intent_id,
+                    "src": previous_reply_id,
+                    "dst": intent_id,
                     "label": "previous_reply",
-                    "reason": "后续轮次基于前一轮回复继续推进",
                 })
             previous_reply_id = reply_id
 
